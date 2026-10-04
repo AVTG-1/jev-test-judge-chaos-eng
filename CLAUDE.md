@@ -7,6 +7,9 @@
   ~/.config/chaos/secrets.env: never print, echo, cat or log secret values.
 - Jev only via OpenRouter Decisions API (JEV_URL / JEV_MODEL from the secrets file). No Gemini.
 - Hard spend cap for this repo: $1.00 total (run.py --max-usd).
+- Publishing: you may `git push origin main` (never force-push). Before every push, scan tracked files for
+  secrets (`git grep -nE "sk-or-|eyJhbGci|ghp_|github_pat_"` must return nothing); if anything matches, stop.
+- Never commit cache.sqlite files.
 
 # Process (autonomous)
 - Work without waiting for me. Keep NOTES.md current (what ran, errors, decisions).

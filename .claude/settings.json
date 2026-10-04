@@ -3,23 +3,16 @@
     "defaultMode": "acceptEdits",
     "allow": ["Bash"],
     "deny": [
-      "Read(~/.config/chaos/**)",
-      "Edit(~/.config/chaos/**)",
-      "Read(~/work/chaos-agent/**)",
-      "Edit(~/work/chaos-agent/**)",
-      "Read(~/work/chaos-targets/**)",
-      "Edit(~/work/chaos-targets/**)",
-      "Read(~/work/organic-target/**)",
-      "Edit(~/work/organic-target/**)",
-      "Bash(env)",
-      "Bash(printenv:*)",
-      "Bash(set)",
-      "Bash(cat ~/.config/chaos/:*)",
-      "Bash(cat /home/ubuntu/.config/chaos/:*)",
-      "Bash(git push:*)",
-      "Bash(sudo:*)",
-      "Bash(rm -rf ~:*)",
-      "Bash(rm -rf /:*)"
+      "Read(~/.config/chaos/**)", "Edit(~/.config/chaos/**)",
+      "Read(~/.git-credentials)", "Edit(~/.git-credentials)",
+      "Bash(cat ~/.git-credentials:*)", "Bash(git config --get credential:*)",
+      "Read(~/work/chaos-agent/**)", "Edit(~/work/chaos-agent/**)",
+      "Read(~/work/chaos-targets/**)", "Edit(~/work/chaos-targets/**)",
+      "Read(~/work/organic-target/**)", "Edit(~/work/organic-target/**)",
+      "Bash(env)", "Bash(printenv:*)", "Bash(set)",
+      "Bash(cat ~/.config/chaos/:*)", "Bash(cat /home/ubuntu/.config/chaos/:*)",
+      "Bash(git push --force:*)", "Bash(git push -f:*)",
+      "Bash(sudo:*)", "Bash(rm -rf ~:*)", "Bash(rm -rf /:*)"
     ]
   }
 }
