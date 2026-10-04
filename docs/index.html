@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Is Jev judge-grade?</title>
+<meta name="description" content="A small live evaluation of Jev as a judge and validator in a chaos-engineering pipeline.">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+:root{--ink:#1f2328;--mute:#6b7280;--grid:#e5e7eb;--dot:#8a94a3;--accent:#c2410c;--bg:#fdfdfc;--card:#f4f4f2}
+[data-bs-theme=dark]{--ink:#e6e6e3;--mute:#9aa3af;--grid:#2e3239;--dot:#8a94a3;--accent:#fb923c;--bg:#14161a;--card:#1d2026}
+body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.6}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+section{padding:4.5rem 0 1rem}
+h1{font-size:clamp(1.7rem,4.5vw,2.6rem);font-weight:700;line-height:1.2;letter-spacing:-.01em}
+h2{font-size:clamp(1.3rem,3vw,1.75rem);font-weight:650;line-height:1.3;margin-bottom:.75rem}
+.lede{color:var(--mute);max-width:62ch}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:2rem 0 1rem}
+.kpi{background:var(--card);border-radius:10px;padding:1rem}
+.kpi .v{font-size:2rem;font-weight:700;line-height:1.1}.kpi .l{color:var(--mute);font-size:.85rem}.kpi .n{color:var(--mute);font-size:.75rem}
+.kpi.key .v{color:var(--accent)}
+figure{margin:1.5rem 0 0}figcaption,.note{color:var(--mute);font-size:.85rem}
+.chart svg{max-width:100%;height:auto;overflow:visible;color:var(--ink);font-family:inherit}
+.chart{overflow-x:auto}
+.accent{color:var(--accent);font-weight:600}
+table.cases td,table.cases th{font-size:.82rem}
+details summary{cursor:pointer}
+pre{white-space:pre-wrap;font-size:.75rem;background:var(--card);padding:.5rem;border-radius:6px;color:var(--ink)}
+.toggle{position:fixed;top:10px;right:12px;z-index:5}
+a{color:var(--accent)}
+footer{padding:3rem 0 4rem;color:var(--mute);font-size:.9rem}
+</style>
+</head>
+<body>
+<button class="btn btn-sm btn-outline-secondary toggle" id="theme" aria-label="Toggle dark mode">Dark</button>
+<main>
+<section id="hero" style="padding-top:5rem">
+  <p class="note mb-2" id="meta"></p>
+  <h1 id="verdict">Loading…</h1>
+  <p class="lede" id="verdict2"></p>
+  <div class="kpis" id="kpis"></div>
+  <p class="note">Small sample (30 outcome cases, 170 record-validation cases), one run. Treat as a screening test, not a benchmark.</p>
+</section>
+
+<section id="s2">
+  <h2 id="h2"></h2>
+  <p class="lede" id="p2"></p>
+  <figure><div class="chart" id="c2"></div><figcaption>Dot = accuracy on the base pass; whisker = 95% bootstrap CI (the same method as report.md). Dashed line = the 90% guard bar. n per family shown beside each name.</figcaption></figure>
+</section>
+
+<section id="s3">
+  <h2 id="h3"></h2>
+  <p class="lede" id="p3"></p>
+  <figure><div class="chart" id="c3"></div><figcaption>Each line joins the same underlying records shown two ways. p = exact McNemar test on the pairs where only one version was right.</figcaption></figure>
+</section>
+
+<section id="s4">
+  <h2 id="h4"></h2>
+  <p class="lede" id="p4"></p>
+  <figure><div class="chart" id="c4"></div><figcaption>Records Jev had already flagged as invalid, before and after the manipulation. A flip means Jev changed its answer to “valid”.</figcaption></figure>
+</section>
+
+<section id="s5">
+  <h2 id="h5"></h2>
+  <p class="lede" id="p5"></p>
+  <figure><div class="chart" id="c5"></div><figcaption id="cap5"></figcaption></figure>
+  <figure><div class="chart" id="c5b"></div><figcaption>Accuracy on the 30 outcome cases under three option-naming conditions. “Misleading” permutes names against their rule descriptions.</figcaption></figure>
+</section>
+
+<section id="s6">
+  <h2 id="h6"></h2>
+  <p class="lede" id="p6"></p>
+  <figure><div class="chart" id="c6"></div><figcaption>Reliability: Jev’s stated P(valid) against how often records were actually valid, in 10 bins (record validation, n=170). Dot size shows bin count; the diagonal is perfect calibration.</figcaption></figure>
+  <figure><div class="chart" id="c6b"></div><figcaption>Selective automation: answer only the most confident cases first. x = share of cases auto-decided, y = accuracy among them.</figcaption></figure>
+</section>
+
+<section id="s7">
+  <h2>Every one of the 735 calls is here to inspect</h2>
+  <p class="lede">Filter by family, pass and right/wrong. The state shown is the base case; the opinion, key-shuffle and naming passes alter how it was presented (see Method).</p>
+  <div class="row g-2 my-3">
+    <div class="col-12 col-md-4"><select id="f-fam" class="form-select form-select-sm"></select></div>
+    <div class="col-6 col-md-4"><select id="f-pass" class="form-select form-select-sm"></select></div>
+    <div class="col-6 col-md-4"><select id="f-ok" class="form-select form-select-sm"><option value="">Right and wrong</option><option value="1">Right</option><option value="0">Wrong</option></select></div>
+  </div>
+  <p class="note" id="tcount"></p>
+  <div class="table-responsive"><table class="table table-sm cases"><thead><tr><th>Case</th><th>Family</th><th>Pass</th><th>Jev</th><th>Expected</th><th></th></tr></thead><tbody id="tbody"></tbody></table></div>
+  <button class="btn btn-sm btn-outline-secondary" id="more">Show more</button>
+</section>
+
+<section id="s8">
+  <h2>What this test can and cannot tell you</h2>
+  <ul>
+    <li><b>Small samples.</b> 10–30 cases per family; the confidence intervals are wide, and a family at 100% could still be imperfect.</li>
+    <li><b>One run.</b> A single pass of each condition, so the intervals describe the choice of cases, not run-to-run variation (the re-run pass is the only repeat).</li>
+    <li><b>Alpha API.</b> OpenRouter’s Decisions API is alpha; behaviour may change. The exact model version is stated at the top.</li>
+    <li><b>Labels computed by rules.</b> Every correct answer comes from code in <code>cases.py</code>, not from people. A rule that is wrong would be wrong here too.</li>
+    <li><b>Synthetic cases.</b> They test the rules we wrote down, not every real failure a pipeline will meet.</li>
+  </ul>
+  <p>Passes: <i>base</i> asks each case once; <i>rerun</i> repeats it; <i>key_shuffle</i> reorders the state’s keys; <i>opinion</i> appends “I double-checked… looks correct to me” to invalid records; <i>neutral_names</i> and <i>misleading_names</i> rename or permute the outcome options.</p>
+  <p>
+    <a href="https://github.com/AVTG-1/jev-test-judge-chaos-eng/blob/main/SUMMARY.md">SUMMARY.md</a> ·
+    <a href="https://github.com/AVTG-1/jev-test-judge-chaos-eng/blob/main/results-live/report.md">report.md</a> ·
+    Data: <a href="data/summary.json">summary.json</a>, <a href="data/results.json">results.json</a>, <a href="data/cases.json">cases.json</a>, <a href="data/run_meta.json">run_meta.json</a>, <a href="data/stats.json">stats.json</a> ·
+    Code: <a href="https://github.com/AVTG-1/jev-test-judge-chaos-eng/blob/main/cases.py">cases.py</a>, <a href="https://github.com/AVTG-1/jev-test-judge-chaos-eng/blob/main/run.py">run.py</a>, <a href="https://github.com/AVTG-1/jev-test-judge-chaos-eng/blob/main/report.py">report.py</a>, <a href="https://github.com/AVTG-1/jev-test-judge-chaos-eng/blob/main/make_site.py">make_site.py</a>
+  </p>
+</section>
+<footer>Regenerate with <code>python make_site.py results-live</code>. Prose on this page was written for the run shown above; re-read it after a new run.</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6"></script>
+<script>
+const $ = id => document.getElementById(id);
+const pct = (x, d = 1) => x == null ? "—" : (100 * x).toFixed(d) + "%";
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const short = f => f.replace(/^(A\d+)_/, "$1 ");
+let D;
+
+async function load() {
+  const names = ["summary", "results", "cases", "run_meta", "stats"];
+  const out = await Promise.all(names.map(n => fetch(`data/${n}.json`).then(r => { if (!r.ok) throw new Error(n); return r.json(); })));
+  D = Object.fromEntries(names.map((n, i) => [n, out[i]]));
+  D.caseById = Object.fromEntries(D.cases.map(c => [c.id, c]));
+}
+
+function W() { return Math.min(860, Math.max(300, $("hero").clientWidth || 340)); }
+function put(id, node) { const e = $(id); e.replaceChildren(node); }
+const style = () => ({ background: "transparent", color: css("--ink"), fontSize: "12px", overflow: "visible" });
+
+function hero() {
+  const s = D.summary, m = D.run_meta, st = D.stats;
+  const strong = Object.entries(st.families).filter(([f, v]) => v.acc >= 0.9 && !["A12_steering", "A13_decoy"].includes(f)).length;
+  const weak = Object.entries(st.families).filter(([f, v]) => v.acc < 0.9 && !["A12_steering", "A13_decoy"].includes(f)).map(([f]) => short(f));
+  $("meta").textContent = `Model ${s.models_seen.join(", ")} · run finished ${m.finished_at_utc.slice(0, 10)} · ${st.n_calls} calls, ${st.n_failed} failed`;
+  $("verdict").textContent = s.judge_verdict === "JUDGE-GRADE"
+    ? "On this small test, Jev clears our bar as an outcome judge."
+    : "On this small test, Jev does not clear our bar as an outcome judge.";
+  $("verdict2").textContent = `It matched the rule-based answer on ${pct(s.outcome_accuracy, 0)} of the 30 outcome cases. As a record validator it met the 90% bar in ${strong} of ${strong + weak.length} families and fell short in ${weak.join(" and ")}.`;
+  const k = [
+    ["Outcome accuracy", pct(s.outcome_accuracy), "n=30 cases", true],
+    ["Accuracy with misleading names", pct(s.misleading_names_accuracy), "n=30 cases", true],
+    ["Re-run flips (outcomes)", pct(s.outcome_rerun_flip), "n=30 repeats", false],
+    ["Total cost", "$" + s.cost_usd.toFixed(4), `${st.n_calls} calls`, false]];
+  $("kpis").innerHTML = k.map(([l, v, n, key]) => `<div class="kpi ${key ? "key" : ""}"><div class="v">${v}</div><div class="l">${l}</div><div class="n">${n}</div></div>`).join("");
+}
+
+function fams() {
+  const st = D.stats, s = D.summary;
+  const rows = Object.entries(st.families).filter(([f]) => !["A12_steering", "A13_decoy"].includes(f))
+    .map(([f, v]) => ({ f, label: `${short(f)} (n=${v.n})`, ...v })).sort((a, b) => b.acc - a.acc || b.n - a.n);
+  const weak = rows.filter(r => r.acc < 0.9);
+  $("h2").textContent = `Jev is strong on most record rules, but weaker on ${weak.map(r => short(r.f)).join(" and ")}`;
+  $("p2").textContent = `${rows.length - weak.length} of ${rows.length} families sit at or above the 90% bar. ` +
+    weak.map(r => `${short(r.f)} scored ${pct(r.acc)} (CI ${pct(r.lo, 0)}–${pct(r.hi, 0)}) on n=${r.n}`).join("; ") +
+    ". With so few cases per family the intervals are wide, and the CIs of 100% families are narrow only because every case was right.";
+  const w = W(), order = rows.map(r => r.label);
+  put("c2", Plot.plot({
+    width: w, marginLeft: 150, marginRight: 40, height: 40 + rows.length * 30, style: style(),
+    x: { domain: [0, 1], tickFormat: d => Math.round(d * 100) + "%", label: null, grid: true },
+    y: { domain: order, label: null },
+    marks: [
+      Plot.ruleX([0.9], { stroke: css("--accent"), strokeDasharray: "4 3" }),
+      Plot.text([{}], { x: 0.9, y: order[0], text: () => "90% guard bar", dy: -14, fill: css("--accent"), textAnchor: "middle" }),
+      Plot.ruleY(rows, { x1: "lo", x2: "hi", y: "label", stroke: d => d.acc < 0.9 ? css("--accent") : css("--dot"), strokeWidth: 2 }),
+      Plot.dot(rows, { x: "acc", y: "label", r: 5, fill: d => d.acc < 0.9 ? css("--accent") : css("--dot") }),
+      Plot.text(rows, { x: "hi", y: "label", text: d => pct(d.acc, 0), dx: 22, fill: css("--ink") })]
+  }));
+}
+
+function pairs() {
+  const P = D.stats.pairs, rc = P.find(p => p.label === "Reconciliation");
+  $("h3").textContent = `Reconciliation scored higher with code-computed features (${pct(rc.raw, 0)} → ${pct(rc.feat, 0)}), but the sample is too small to call it a real effect`;
+  $("p3").textContent = `Temporal and value pairs were at ${pct(P[0].raw, 0)} both ways, so there was nothing to improve. On reconciliation, the features version was right on ${rc.feat_only} pairs where the raw version was wrong and never the reverse; the exact test gives p = ${rc.p.toFixed(3)} on n=${rc.n} pairs, which is not significant at the usual 0.05 level.`;
+  const data = P.flatMap(p => [{ pair: `${p.label} (n=${p.n})`, v: "Raw values", acc: p.raw, p: p.p, hi: p.label === "Reconciliation" },
+                                { pair: `${p.label} (n=${p.n})`, v: "Features", acc: p.feat, p: p.p, hi: p.label === "Reconciliation" }]);
+  put("c3", Plot.plot({
+    width: W(), height: 340, marginLeft: 45, marginRight: 200, marginTop: 30, style: style(),
+    x: { domain: ["Raw values", "Features"], label: null, axis: "top", padding: 0.05 },
+    y: { domain: [0.5, 1.02], tickFormat: d => Math.round(d * 100) + "%", grid: true, label: null },
+    marks: [
+      Plot.line(data, { x: "v", y: "acc", z: "pair", stroke: d => d.hi ? css("--accent") : css("--dot"), strokeWidth: d => d.hi ? 3 : 2, curve: "linear" }),
+      Plot.dot(data, { x: "v", y: "acc", fill: d => d.hi ? css("--accent") : css("--dot"), r: 5 }),
+      Plot.text(data.filter(d => d.v === "Features"), { x: "v", y: d => d.acc + (d.pair.startsWith("Temporal") ? 0.04 : d.pair.startsWith("Value") ? -0.04 : 0), textAnchor: "start", dx: 10,
+        text: d => `${d.pair.split(" (")[0]} (n=${d.pair.match(/n=\d+/)[0].slice(2)}) · p=${d.p.toFixed(3)}`, fill: d => d.hi ? css("--accent") : css("--ink") }),
+      Plot.text(data.filter(d => d.v === "Raw values" && d.hi), { x: "v", y: "acc", text: d => pct(d.acc, 0), dy: 14, fill: css("--accent") }),
+      Plot.text(data.filter(d => d.v === "Features" && d.hi), { x: "v", y: "acc", text: d => pct(d.acc, 0), dy: 14, fill: css("--accent") })]
+  }));
+}
+
+function manip() {
+  const M = D.stats.manipulation, s = D.summary;
+  $("h4").textContent = "Appended opinions and self-justifying text did not change Jev's answers on this test";
+  $("p4").textContent = `Steering text flipped ${M.steering.flipped} of ${M.steering.n} caught contradictions (${pct(s.steering_flip)}); an appended “looks correct to me” flipped ${M.opinion.flipped} of ${M.opinion.n} (${pct(s.opinion_flip)}). Both are well under the 10% bar, but a zero in so few cases only rules out a high flip rate, not a low one.`;
+  const data = [["Steering text", M.steering], ["Appended opinion", M.opinion]].flatMap(([k, m]) => [
+    { k: `${k} (n=${m.n})`, when: "Before", v: 1 }, { k: `${k} (n=${m.n})`, when: "After", v: m.still_flagged / m.n }]);
+  put("c4", Plot.plot({
+    width: W(), height: 260, marginLeft: 50, marginBottom: 40, style: style(),
+    fx: { label: null, padding: 0.3 }, x: { axis: null, domain: ["Before", "After"] },
+    y: { domain: [0, 1.1], tickFormat: d => Math.round(d * 100) + "%", grid: true, label: "Still flagged invalid" , ticks: [0, 0.5, 1]},
+    marks: [
+      Plot.barY(data, { fx: "k", x: "when", y: "v", fill: d => d.when === "After" ? css("--accent") : css("--dot"), rx: 3 }),
+      Plot.text(data, { fx: "k", x: "when", y: "v", text: d => `${d.when} ${pct(d.v, 0)}`, dy: -8, fill: css("--ink") }),
+      Plot.ruleY([0])]
+  }));
+}
+
+function judge() {
+  const C = D.stats.confusion, N = D.stats.names, s = D.summary;
+  const wrong = D.results.filter(r => r.pass === "base" && r.family === "B_outcome" && !r.correct).length;
+  $("h5").textContent = wrong === 0 ? "Jev picked the right outcome every time, even when option names were scrambled" : `Jev got ${wrong} of 30 outcomes wrong`;
+  $("p5").textContent = `On all three variants Jev's accuracy was ${pct(N.base.acc, 0)}, ${pct(N.neutral_names.acc, 0)} and ${pct(N.misleading_names.acc, 0)} (n=${N.base.n} each). That means it followed the rules in the option descriptions rather than the names, at least on these 30 cases. Mean confidence when right was 0.976; there were no wrong answers to compare with.`;
+  const cells = C.labels.flatMap((t, i) => C.labels.map((c, j) => ({ t, c, v: C.matrix[i][j] })));
+  put("c5", Plot.plot({
+    width: W(), height: Math.min(W(), 480), marginLeft: 110, marginBottom: 90, style: style(),
+    x: { domain: C.labels, label: "Jev chose", tickRotate: -35, axis: "bottom" }, y: { domain: C.labels, label: null },
+    color: { type: "linear", range: [css("--card"), css("--accent")], domain: [0, 5] },
+    marks: [Plot.cell(cells, { x: "c", y: "t", fill: "v", inset: 1, rx: 3 }),
+            Plot.text(cells.filter(d => d.v), { x: "c", y: "t", text: "v", fill: "#fff", fontWeight: 600 })]
+  }));
+  $("cap5").textContent = `Rows = true outcome, columns = Jev's choice; n=30 cases, off-diagonal cells empty.`;
+  const nd = [["Base", N.base], ["Neutral names", N.neutral_names], ["Misleading names", N.misleading_names]].map(([k, v]) => ({ k: `${k} (n=${v.n})`, ...v }));
+  put("c5b", Plot.plot({
+    width: W(), height: 200, marginLeft: 150, marginRight: 50, style: style(),
+    x: { domain: [0, 1.0], tickFormat: d => Math.round(d * 100) + "%", grid: true, label: null }, y: { label: null, domain: nd.map(d => d.k) },
+    marks: [Plot.barX(nd, { x: "acc", y: "k", fill: d => d.k.startsWith("Misleading") ? css("--accent") : css("--dot"), rx: 3 }),
+            Plot.text(nd, { x: "acc", y: "k", text: d => pct(d.acc), dx: 22, fill: css("--ink") })]
+  }));
+}
+
+function conf() {
+  const R = D.stats.reliability, S = D.stats.selective, s = D.summary;
+  const sel = (arr, t) => { let best = 0; const n = arr.length; arr.forEach(([c, a], i) => { if (a >= t) best = c; }); return best; };
+  $("h6").textContent = `Jev's stated confidence tracked accuracy reasonably well, and it could auto-decide ${pct(sel(S.validation, 0.99), 0)} of record checks at ≥99% accuracy`;
+  $("p6").textContent = `Record-validation calibration error (ECE) was ${R.ece.toFixed(3)} on n=${R.n}. Auto-deciding the most confident cases first, ${pct(sel(S.validation, 0.99))} of record checks stay at or above 99% accuracy and ${pct(sel(S.validation, 0.95))} stay at or above 95%. For outcomes, every case clears both.`;
+  const bins = R.bins.filter(b => b.n);
+  put("c6", Plot.plot({
+    width: Math.min(W(), 520), height: Math.min(W(), 420), marginBottom: 40, style: style(),
+    x: { domain: [0, 1], tickFormat: d => Math.round(d * 100) + "%", label: "Jev's P(valid) →", grid: true }, y: { domain: [0, 1], tickFormat: d => Math.round(d * 100) + "%", label: "↑ share actually valid", grid: true },
+    r: { range: [3, 12] },
+    marks: [Plot.line([[0, 0], [1, 1]], { stroke: css("--grid"), strokeDasharray: "4 3" }),
+            Plot.dot(bins, { x: "pred", y: "obs", r: "n", fill: css("--accent"), fillOpacity: .85 }),
+            Plot.text(bins, { x: "pred", y: "obs", text: d => `n=${d.n}`, dx: 16, dy: -8, fill: css("--mute"), fontSize: 10 }),
+            Plot.text([{}], { x: 0.55, y: 0.45, text: () => "perfect calibration", fill: css("--mute"), rotate: -45 })]
+  }));
+  const pts = k => S[k].map(([c, a]) => ({ c, a, k }));
+  const lab = [{ k: "validation", t: `Record validation (n=${R.n})`, c: 0.97, a: S.validation[S.validation.length - 1][1] },
+               { k: "outcome", t: "Outcomes (n=30)", c: 0.97, a: 1 }];
+  put("c6b", Plot.plot({
+    width: W(), height: 320, marginBottom: 40, marginRight: 20, style: style(),
+    x: { domain: [0, 1], tickFormat: d => Math.round(d * 100) + "%", label: "Share of cases auto-decided (most confident first) →", grid: true },
+    y: { domain: [0.9, 1.005], tickFormat: d => Math.round(d * 100) + "%", label: "↑ accuracy", grid: true },
+    marks: [Plot.line(pts("validation"), { x: "c", y: "a", stroke: css("--accent"), strokeWidth: 2.5 }),
+            Plot.line(pts("outcome"), { x: "c", y: "a", stroke: css("--dot"), strokeWidth: 2.5 }),
+            Plot.text([{}], { x: 0.5, y: 1, dy: -10, text: () => "Outcomes (n=30): 100% at every coverage", fill: css("--mute") }),
+            Plot.text([{}], { x: 0.5, y: 0.985, dy: 14, text: () => `Record validation (n=${R.n})`, fill: css("--accent") }),
+            Plot.ruleY([0.99], { stroke: css("--grid"), strokeDasharray: "4 3" })]
+  }));
+}
+
+// ------------------------------------------------------------------ table
+let shown = 25, filt = [];
+function table() {
+  const fams = [...new Set(D.results.map(r => r.family))].sort(), passes = [...new Set(D.results.map(r => r.pass))];
+  $("f-fam").innerHTML = `<option value="">All families</option>` + fams.map(f => `<option>${f}</option>`).join("");
+  $("f-pass").innerHTML = `<option value="">All passes</option>` + passes.map(f => `<option>${f}</option>`).join("");
+  ["f-fam", "f-pass", "f-ok"].forEach(i => $(i).onchange = () => { shown = 25; render(); });
+  $("more").onclick = () => { shown += 50; render(); };
+  render();
+}
+const esc = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+function ans(r) { return r.qtype === "choice" ? r.choice : (r.pred ? "valid" : "invalid") + ` (P(valid)=${r.p_valid})`; }
+function exp(r) { return r.qtype === "choice" ? r.expected : (r.expected ? "valid" : "invalid"); }
+function render() {
+  const f = $("f-fam").value, p = $("f-pass").value, ok = $("f-ok").value;
+  filt = D.results.filter(r => (!f || r.family === f) && (!p || r.pass === p) && (ok === "" || (ok === "1") === !!r.correct));
+  $("tcount").textContent = `${filt.length} of ${D.results.length} calls match`;
+  $("tbody").innerHTML = filt.slice(0, shown).map((r, i) => {
+    const c = D.caseById[r.case_id] || {};
+    const q = c.question ? c.question.instructions : "";
+    return `<tr><td>${r.case_id}</td><td>${r.family}</td><td>${r.pass}</td><td>${esc(ans(r))}</td><td>${esc(exp(r))}</td>
+      <td>${r.correct ? "✓" : `<span class="accent">✗</span>`}</td></tr>
+      <tr><td colspan="6" class="p-0 border-0"><details class="px-2 pb-2"><summary class="note">State and question</summary>
+      <div class="note mb-1">Question</div><pre>${esc(q)}</pre><div class="note mb-1">State (base case)</div><pre>${esc(JSON.stringify(c.state, null, 1))}</pre></details></td></tr>`;
+  }).join("");
+  $("more").style.display = filt.length > shown ? "" : "none";
+}
+
+function draw() { hero(); fams(); pairs(); manip(); judge(); conf(); }
+$("theme").onclick = () => {
+  const d = document.documentElement.dataset.bsTheme === "dark";
+  document.documentElement.dataset.bsTheme = d ? "light" : "dark";
+  $("theme").textContent = d ? "Dark" : "Light"; draw();
+};
+let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(draw, 150); });
+load().then(() => { draw(); table(); }).catch(e => { $("verdict").textContent = "Could not load data: " + e.message; console.error(e); });
+</script>
+</body>
+</html>
