@@ -21,6 +21,10 @@ We made 200 cases. The correct answer to each was worked out by code from the ru
 - **Confidence:** its stated confidence was reasonably honest (calibration error 0.046). Taking only its most confident answers, 88.2% of record checks could be auto-decided while staying at 99% accuracy or better.
 - **Raw numbers vs. code-computed features:** on payment totals, accuracy was 60.0% with raw numbers and 100.0% with computed percentages, but on only 10 pairs (exact test p = 0.125), so this could be chance. The other two comparisons were 100.0% both ways.
 
+## What it costs
+
+The whole run (735 questions) cost $0.0160, about $0.000022 per question on average. Jev is billed only for the text it reads ($0.042 per million input tokens); its answers were not billed. A single outcome verdict cost about $0.00003 and a single record check about $0.00002 in the base pass. The evaluation itself (the base pass) was $0.0042; the rest paid for re-runs and stress tests. These are today's alpha prices for this run's prompt sizes and may change. See the cost section of the interactive page.
+
 ## What this does not show
 
 - It does not show Jev is perfect: small samples can hide rare mistakes, and many families have only 10 cases.

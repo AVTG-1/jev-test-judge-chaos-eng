@@ -74,6 +74,26 @@ footer{padding:3rem 0 4rem;color:var(--mute);font-size:.9rem}
   <figure><div class="chart" id="c6b"></div><figcaption>Selective automation: answer only the most confident cases first. x = share of cases auto-decided, y = accuracy among them.</figcaption></figure>
 </section>
 
+<section id="s6c" hidden>
+  <h2 id="h6c"></h2>
+  <p class="lede" id="p6c"></p>
+  <figure><div class="chart" id="c6c"></div><figcaption id="cap6c"></figcaption></figure>
+  <h2 id="h6d" class="mt-5"></h2>
+  <p class="lede" id="p6d"></p>
+  <figure><div class="chart" id="c6d"></div><figcaption>Where the money went, by job and pass. Calls in brackets. Accent = the base pass, the evaluation itself; the rest is stress-testing it.</figcaption></figure>
+  <h2 id="h6e" class="mt-5"></h2>
+  <p class="lede" id="p6e"></p>
+  <figure><div class="chart" id="c6e"></div><figcaption>Mean billed cost per call in the base pass, by family (n = cases per family).</figcaption></figure>
+  <h2 id="h6f" class="mt-5"></h2>
+  <p class="lede" id="p6f"></p>
+  <div class="row g-3 my-3 align-items-end">
+    <div class="col-6 col-md-4"><label class="note" for="v-judge">Outcome verdicts per day</label><input id="v-judge" type="number" min="0" value="1000" class="form-control form-control-sm"></div>
+    <div class="col-6 col-md-4"><label class="note" for="v-guard">Record checks per day</label><input id="v-guard" type="number" min="0" value="10000" class="form-control form-control-sm"></div>
+    <div class="col-12 col-md-4"><div class="kpi"><div class="v" id="v-out">—</div><div class="l" id="v-lab"></div></div></div>
+  </div>
+  <p class="note" id="cap6f"></p>
+</section>
+
 <section id="s7">
   <h2>Every one of the 735 calls is here to inspect</h2>
   <p class="lede">Filter by family, pass and right/wrong. The state shown is the base case; the opinion, key-shuffle and naming passes alter how it was presented (see Method).</p>
@@ -100,7 +120,7 @@ footer{padding:3rem 0 4rem;color:var(--mute);font-size:.9rem}
   <p>
     <a href="https://github.com/AVTG-1/jev-test-judge-chaos-eng/blob/main/SUMMARY.md">SUMMARY.md</a> ·
     <a href="https://github.com/AVTG-1/jev-test-judge-chaos-eng/blob/main/results-live/report.md">report.md</a> ·
-    Data: <a href="data/summary.json">summary.json</a>, <a href="data/results.json">results.json</a>, <a href="data/cases.json">cases.json</a>, <a href="data/run_meta.json">run_meta.json</a>, <a href="data/stats.json">stats.json</a> ·
+    Data: <a href="data/summary.json">summary.json</a>, <a href="data/results.json">results.json</a>, <a href="data/cases.json">cases.json</a>, <a href="data/run_meta.json">run_meta.json</a>, <a href="data/stats.json">stats.json</a>, <a href="data/cost.json">cost.json</a> ·
     Code: <a href="https://github.com/AVTG-1/jev-test-judge-chaos-eng/blob/main/cases.py">cases.py</a>, <a href="https://github.com/AVTG-1/jev-test-judge-chaos-eng/blob/main/run.py">run.py</a>, <a href="https://github.com/AVTG-1/jev-test-judge-chaos-eng/blob/main/report.py">report.py</a>, <a href="https://github.com/AVTG-1/jev-test-judge-chaos-eng/blob/main/make_site.py">make_site.py</a>
   </p>
 </section>
@@ -118,9 +138,10 @@ let D;
 
 async function load() {
   const names = ["summary", "results", "cases", "run_meta", "stats"];
+  const cj = await fetch("data/cost.json").then(r => r.ok ? r.json() : null).catch(() => null);
   const out = await Promise.all(names.map(n => fetch(`data/${n}.json`).then(r => { if (!r.ok) throw new Error(n); return r.json(); })));
   D = Object.fromEntries(names.map((n, i) => [n, out[i]]));
-  D.caseById = Object.fromEntries(D.cases.map(c => [c.id, c]));
+  D.cost = cj; D.caseById = Object.fromEntries(D.cases.map(c => [c.id, c]));
 }
 
 function W() { return Math.min(860, Math.max(300, $("hero").clientWidth || 340)); }
@@ -140,7 +161,7 @@ function hero() {
     ["Outcome accuracy", pct(s.outcome_accuracy), "n=30 cases", true],
     ["Accuracy with misleading names", pct(s.misleading_names_accuracy), "n=30 cases", true],
     ["Re-run flips (outcomes)", pct(s.outcome_rerun_flip), "n=30 repeats", false],
-    ["Total cost", "$" + s.cost_usd.toFixed(4), `${st.n_calls} calls`, false]];
+    ["Total cost", "$" + s.cost_usd.toFixed(4), D.cost ? `${st.n_calls} calls · ≈ ${(D.cost.by_job_pass["choice|base"].mean * 1e6).toFixed(0)} millionths of a $ per verdict` : `${st.n_calls} calls`, false]];
   $("kpis").innerHTML = k.map(([l, v, n, key]) => `<div class="kpi ${key ? "key" : ""}"><div class="v">${v}</div><div class="l">${l}</div><div class="n">${n}</div></div>`).join("");
 }
 
@@ -257,6 +278,62 @@ function conf() {
   }));
 }
 
+
+// ------------------------------------------------------------------ cost
+const usd = (x, d = 4) => "$" + x.toFixed(d);
+const mu = x => "$" + (x * 1e6).toFixed(1) + "e-6";
+const micro = x => (x * 1e6).toFixed(1) + " µ$";
+function cost() {
+  const C = D.cost; if (!C) return;
+  $("s6c").hidden = false;
+  const jobName = { choice: "Judge (outcome)", noul: "Guard (record check)" };
+  const calls = C.calls, f = C.fit;
+  $("h6c").textContent = `Jev bills only for what it reads: $${f.usd_per_mtok_in.toFixed(3)} per million input tokens, nothing for its answer`;
+  $("p6c").textContent = `All ${C.n} calls fit one rule exactly: billed cost = input tokens × $${f.usd_per_mtok_in.toFixed(3)} / 1,000,000. Its ${C.out_tokens.toLocaleString()} output tokens were not billed (fitted output rate: $${f.usd_per_mtok_out.toFixed(3)}). Total: ${C.in_tokens.toLocaleString()} input tokens, ${usd(C.total)}.`;
+  const xs = calls.map(c => c.in), x0 = Math.min(...xs), x1 = Math.max(...xs);
+  put("c6c", Plot.plot({
+    width: W(), height: 340, marginTop: 30, marginBottom: 45, marginLeft: 55, style: style(),
+    x: { label: "Input tokens in the call →", grid: true }, y: { label: "↑ billed cost (millionths of a dollar)", grid: true, tickFormat: d => (d * 1e6).toFixed(0) },
+    marks: [Plot.dot(calls, { x: "in", y: "cost", r: 2.5, fill: d => d.qtype === "choice" ? css("--accent") : css("--dot"), fillOpacity: .6 }),
+            Plot.line([[x0, x0 * f.usd_per_mtok_in / 1e6], [x1, x1 * f.usd_per_mtok_in / 1e6]], { stroke: css("--ink"), strokeWidth: 1 }),
+            Plot.text([{}], { x: x0 + 20, y: x1 * f.usd_per_mtok_in / 1e6, dy: 14, text: () => `All ${C.n} calls sit on one line`, textAnchor: "start", fill: css("--ink") }),
+            Plot.text([{}], { x: x0 + 20, y: x1 * f.usd_per_mtok_in / 1e6, dy: 30, text: () => "accent = outcome judge calls, grey = record checks", textAnchor: "start", fill: css("--mute"), fontSize: 11 })]
+  }));
+  $("cap6c").textContent = `One dot per call, n=${C.n}. Cost is taken from each response's own usage.cost; the line is the fitted rate (maximum residual ${f.max_resid.toExponential(1)}).`;
+
+  const jp = Object.entries(C.by_job_pass).map(([k, v]) => { const [j, p] = k.split("|"); return { label: `${jobName[j].split(" ")[0]} · ${p} (${v.n})`, p, ...v }; }).sort((a, b) => b.cost - a.cost);
+  const baseCost = C.by_pass.base.cost;
+  $("h6d").textContent = `The evaluation itself cost ${usd(baseCost)}; most of the ${usd(C.total)} went on re-running and stress-testing`;
+  $("p6d").textContent = `The base pass was ${pct(baseCost / C.total, 0)} of spend. The re-run and key-shuffle passes each cost the same as the base pass because they repeat all 200 cases. Judge calls were ${pct(C.by_job.choice.cost / C.total, 0)} of the total (${C.by_job.choice.n} calls); record checks were ${pct(C.by_job.noul.cost / C.total, 0)} (${C.by_job.noul.n} calls).`;
+  put("c6d", Plot.plot({
+    width: W(), height: 60 + jp.length * 28, marginLeft: 235, marginRight: 70, style: style(),
+    x: { label: null, grid: true, tickFormat: d => "$" + d.toFixed(4) }, y: { label: null, domain: jp.map(d => d.label) },
+    marks: [Plot.barX(jp, { x: "cost", y: "label", fill: d => d.p === "base" ? css("--accent") : css("--dot"), rx: 3 }),
+            Plot.text(jp, { x: "cost", y: "label", text: d => usd(d.cost, 5), textAnchor: "start", dx: 5, fill: css("--ink") })]
+  }));
+
+  const base = calls.filter(c => c.pass === "base"), fm = {};
+  base.forEach(c => (fm[c.family] = fm[c.family] || []).push(c));
+  const fr = Object.entries(fm).map(([k, v]) => ({ label: `${short(k)} (n=${v.length})`, qtype: v[0].qtype, mean: v.reduce((a, c) => a + c.cost, 0) / v.length, tok: v.reduce((a, c) => a + c.in, 0) / v.length })).sort((a, b) => b.mean - a.mean);
+  const bj = C.by_job_pass["choice|base"], bg = C.by_job_pass["noul|base"], ratio = bj.mean / bg.mean;
+  $("h6e").textContent = `A judge verdict costs about ${ratio.toFixed(1)}× a record check, because its prompt is longer`;
+  $("p6e").textContent = `In the base pass a judge call averaged ${micro(bj.mean)} (${Math.round(bj.in / bj.n)} input tokens) and a record check ${micro(bg.mean)} (${Math.round(bg.in / bg.n)} tokens). Because billing is per input token, cost follows prompt length; it says nothing about how hard a case is.`;
+  put("c6e", Plot.plot({
+    width: W(), height: 80 + fr.length * 26, marginBottom: 45, marginLeft: 150, marginRight: 70, style: style(),
+    x: { label: "Mean cost per call (millionths of a dollar) →", grid: true, tickFormat: d => (d * 1e6).toFixed(0) }, y: { label: null, domain: fr.map(d => d.label) },
+    marks: [Plot.dot(fr, { x: "mean", y: "label", r: 5, fill: d => d.qtype === "choice" ? css("--accent") : css("--dot") }),
+            Plot.text(fr, { x: "mean", y: "label", text: d => (d.mean * 1e6).toFixed(1), dx: 18, fill: css("--ink") })]
+  }));
+
+  const perJ = bj.mean, perG = bg.mean;
+  $("h6f").textContent = `At today's price, 1,000 judge verdicts cost about ${usd(perJ * 1000, 3)} and 1,000 record checks about ${usd(perG * 1000, 3)}`;
+  $("p6f").textContent = `This is arithmetic on the measured base-pass averages above, not a forecast. On this test Jev agreed with the free rule-based judge on all ${D.stats.names.base.n} outcome cases, so the run shows what Jev costs but no accuracy gain to set against it.`;
+  const calc = () => { const j = +$("v-judge").value || 0, g = +$("v-guard").value || 0, d = j * perJ + g * perG;
+    $("v-out").textContent = usd(d, d < 1 ? 4 : 2); $("v-lab").textContent = `per day · ${usd(d * 30, d * 30 < 1 ? 4 : 2)} per 30 days`; };
+  $("v-judge").oninput = $("v-guard").oninput = calc; calc();
+  $("cap6f").textContent = "Projection assumes today's alpha price, prompts the same size as in this run, and no caching or batching. Single run; the price may change.";
+}
+
 // ------------------------------------------------------------------ table
 let shown = 25, filt = [];
 function table() {
@@ -285,7 +362,7 @@ function render() {
   $("more").style.display = filt.length > shown ? "" : "none";
 }
 
-function draw() { hero(); fams(); pairs(); manip(); judge(); conf(); }
+function draw() { hero(); fams(); pairs(); manip(); judge(); conf(); cost(); }
 $("theme").onclick = () => {
   const d = document.documentElement.dataset.bsTheme === "dark";
   document.documentElement.dataset.bsTheme = d ? "light" : "dark";

@@ -117,4 +117,53 @@ dump({"families": fams, "pairs": pairs, "manipulation": manip, "confusion": conf
       "reliability": {"bins": bins, "ece": ece(pv, yv), "n": len(A)},
       "selective": {"validation": curve(sel_a), "outcome": curve(sel_b)},
       "n_calls": len(rows), "n_failed": sum(1 for r in rows if not r.get("ok"))}, "stats.json")
+
+# ---------------------------------------------------------------- cost (billed figures from the raw API responses)
+def cost_step():
+    import sqlite3
+    from types import SimpleNamespace
+    from statistics import mean
+    cache = src / "cache.sqlite"
+    if not cache.exists():
+        print("WARNING: no cache.sqlite, skipping cost.json (the page hides the cost section)")
+        (dst / "cost.json").unlink(missing_ok=True)
+        return
+    sys.argv = sys.argv[:1]
+    import run  # only for build_tasks / JevClient.key; no secrets are read and no calls are made
+    meta = json.loads((src / "run_meta.json").read_text())
+    cases = json.loads((src / "cases.json").read_text())
+    fake = SimpleNamespace(s={"url": meta["endpoint"], "model": meta["model_requested"]}, state_format=meta["state_format"])
+    con = sqlite3.connect(f"file:{cache}?mode=ro", uri=True)
+    resp = {k: json.loads(v) for k, v in con.execute("select k, resp from calls")}
+    calls = []
+    for t in run.build_tasks(cases, meta["passes"]):
+        k = run.JevClient.key(fake, run.JevClient.payload(fake, t["state"], t["question"]), t["rep"])
+        u = resp[k]["usage"]
+        calls.append({"case_id": t["case_id"], "pass": t["pass_"], "family": t["family"], "qtype": t["qtype"],
+                      "in": u["input_tokens"], "out": u["output_tokens"], "cost": u["cost"]})
+    total = sum(c["cost"] for c in calls)
+    summ = json.loads((src / "summary.json").read_text())
+    assert len(calls) == meta["n_calls"], "not every call joined to a cached response"
+    assert abs(total - summ["cost_usd"]) < 1e-12, "cache cost does not match summary.json cost_usd"
+    # least squares: cost = a*input + b*output
+    sxx = sum(c["in"] ** 2 for c in calls); syy = sum(c["out"] ** 2 for c in calls); sxy = sum(c["in"] * c["out"] for c in calls)
+    sxc = sum(c["in"] * c["cost"] for c in calls); syc = sum(c["out"] * c["cost"] for c in calls)
+    d = sxx * syy - sxy ** 2
+    a, b = (sxc * syy - syc * sxy) / d, (syc * sxx - sxc * sxy) / d
+    resid = max(abs(c["cost"] - a * c["in"] - b * c["out"]) for c in calls)
+
+    def agg(keyf):
+        g = {}
+        for c in calls:
+            g.setdefault(keyf(c), []).append(c)
+        return {k: {"n": len(v), "cost": sum(x["cost"] for x in v), "mean": mean(x["cost"] for x in v),
+                    "in": sum(x["in"] for x in v)} for k, v in g.items()}
+    dump({"calls": calls, "total": total, "n": len(calls), "in_tokens": sum(c["in"] for c in calls),
+          "out_tokens": sum(c["out"] for c in calls),
+          "fit": {"usd_per_mtok_in": a * 1e6, "usd_per_mtok_out": b * 1e6, "max_resid": resid},
+          "by_job": agg(lambda c: c["qtype"]), "by_pass": agg(lambda c: c["pass"]),
+          "by_job_pass": agg(lambda c: c["qtype"] + "|" + c["pass"]), "by_family": agg(lambda c: c["family"])}, "cost.json")
+
+
+cost_step()
 print(f"wrote docs/data/ from {src}")

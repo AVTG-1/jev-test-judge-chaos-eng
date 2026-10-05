@@ -19,5 +19,11 @@
 ## Publishing
 GitHub Pages must be enabled for this repo with source = branch `main`, folder `/docs`. URL: https://avtg-1.github.io/jev-test-judge-chaos-eng/
 
+## Cost analysis (added)
+- `make_site.py` now also writes docs/data/cost.json. It opens results-live/cache.sqlite read-only, rebuilds each call's cache key with run.build_tasks + JevClient.key (no secrets read, no API calls), and joins usage.input_tokens/output_tokens/cost to every call.
+- Asserted at build time: all 735 calls join; sum of usage.cost equals summary.json cost_usd (1e-12). If cache.sqlite is absent the cost file is skipped and the page hides the section.
+- Finding: billed cost = input_tokens x $0.042/Mtok exactly (least-squares fit, max residual 2.7e-20); the 24,427 output tokens were not billed. Matches USD_PER_MTOK in run.py.
+- cache.sqlite stays untracked. Projection calculator on the page uses base-pass mean cost per call and is labelled as arithmetic, not a forecast.
+
 ## Secret scan
-`git grep -nE "sk-or-|eyJhbGci|ghp_|github_pat_"` has exactly one hit: CLAUDE.md:11, which is the text of the scan rule itself (the pattern, no credential). With CLAUDE.md excluded the scan returns nothing. Treated as a false positive and pushed; flagged here for review. No cache.sqlite is tracked.
+The CLAUDE.md secret-scan pattern has exactly one hit in the repo: CLAUDE.md:11, the text of the scan rule itself (no credential). With CLAUDE.md excluded it returns nothing. Treated as a false positive and pushed; flagged for review. No cache.sqlite is tracked.
